@@ -1,35 +1,31 @@
 import Vue from 'vue'
 import VueApollo from 'vue-apollo'
 import { ApolloClient, createNetworkInterface } from 'apollo-client'
+import { addGraphQLSubscriptions } from 'subscriptions-transport-ws'
 
 Vue.use(VueApollo)
 
 export default ({ isClient, isServer, app, route, beforeNuxtRender }) => {
-
   const providerOptions = {
     clients: {}
   }
-
-  <% Object.keys(options.networkInterfaces).forEach((key) => { %>
-    let networkInterface = require('<%= options.networkInterfaces[key] %>')
-    networkInterface = networkInterface.default || networkInterface
-    const <%= key %>Client = new ApolloClient({
+  const networkInterface = require('<%= options.networkInterface %>').default
+  let defaultClient
+  if (isServer) {
+    defaultClient = new ApolloClient({
       networkInterface,
-      ...(isServer ? {
-        ssrMode: true
-      } : {
-        initialState: window.__NUXT__.apollo.<%= key === 'default' ? 'defaultClient' : key %>,
-        ssrForceFetchDelay: 100
-      })
+      ssrMode: true
     })
-    <% if (key === 'default') { %>
-      providerOptions.<%= key %>Client = <%= key %>Client
-    <% } else { %>
-      providerOptions.clients.<%= key %> = <%= key %>Client
-    <% } %>
+  } else {
+    const wsClient = require('<%= options.wsClient %>').default
+    defaultClient = new ApolloClient({
+      networkInterface: addGraphQLSubscriptions(networkInterface, wsClient),
+      initialState: window.__NUXT__.apollo.defaultClient,
+      ssrForceFetchDelay: 100
+    })
+  }
 
-  <% }) %>
-
+  providerOptions.defaultClient = defaultClient
 
   app.apolloProvider = new VueApollo(providerOptions)
 
@@ -37,7 +33,6 @@ export default ({ isClient, isServer, app, route, beforeNuxtRender }) => {
     beforeNuxtRender(async ({ Components, nuxtState }) => {
       await app.apolloProvider.prefetchAll({ route }, Components)
       nuxtState.apollo = app.apolloProvider.getStates()
-    })
+  })
   }
-
 }
